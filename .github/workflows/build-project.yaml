@@ -1,0 +1,216 @@
+name: Build Project
+on:
+  workflow_call:
+jobs:
+  check-event:
+    name: Check GitHub Event Data 📡
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      package: ${{ steps.setup.outputs.package }}
+      codesign: ${{ steps.setup.outputs.codesign }}
+      notarize: ${{ steps.setup.outputs.notarize }}
+      commitHash: ${{ steps.setup.outputs.commitHash }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check Event Data ☑️
+        id: setup
+        run: |
+          : Check Event Data ☑️
+          case "${GITHUB_EVENT_NAME}" in
+            pull_request)
+              if [[ '${{ github.event.action }}' == 'labeled' && '${{ github.event.label.name }}' == 'Seeking Testers' ]]; then
+                codesign='true'
+                package='true'
+              else
+                labels="$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -s "${{ github.event.pull_request.url }}" \
+                  | jq -r '.labels[] | select(.name == "Seeking Testers")')"
+                if [[ "${labels}" ]]; then
+                  codesign='true'
+                  package='true'
+                fi
+              fi
+              ;;
+            push)
+              if [[ "${GITHUB_REF_NAME}" =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]]; then
+                codesign='true'
+                notarize='true'
+                package='true'
+              fi
+              ;;
+            schedule)
+              codesign='true'
+              package='true'
+              ;;
+            dispatch)
+              codesign='true'
+              ;;
+            *) ;;
+          esac
+
+          echo "codesign=${codesign:-false}" >> $GITHUB_OUTPUT
+          echo "notarize=${notarize:-false}" >> $GITHUB_OUTPUT
+          echo "package=${package:-false}" >> $GITHUB_OUTPUT
+          echo "commitHash=$(git rev-parse --short=9 HEAD)" >> $GITHUB_OUTPUT
+  macos-build:
+    name: Build for macOS 🍏
+    runs-on: macos-12
+    needs: check-event
+    defaults:
+      run:
+        shell: zsh {0}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Setup Environment 🔧
+        id: setup
+        run: |
+          : Setup Environment 🔧
+          print '::group::Clean Homebrew Environment'
+          typeset -a to_remove=()
+
+          if (( #to_remove > 0 )) brew uninstall --ignore-dependencies ${to_remove}
+          print '::endgroup::'
+
+          local product_name
+          local product_version
+          read -r product_name product_version <<< \
+            "$(jq -r '. | {name, version} | join(" ")' buildspec.json)"
+
+          print "pluginName=${product_name}" >> $GITHUB_OUTPUT
+          print "pluginVersion=${product_version}" >> $GITHUB_OUTPUT
+      - uses: actions/cache@v3
+        id: ccache-cache
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.event_name }}-${{ github.head_ref }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-push-
+      - name: Setup Codesigning 🔑
+        uses: ./.github/actions/setup-macos-codesigning
+        if: ${{ fromJSON(needs.check-event.outputs.codesign) }}
+        id: codesign
+        with:
+          codesignIdentity: ${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}
+          installerIdentity: ${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}
+          codesignCertificate: ${{ secrets.MACOS_SIGNING_CERT }}
+          certificatePassword: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+          keychainPassword: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          provisioningProfile: ${{ secrets.MACOS_SIGNING_PROVISIONING_PROFILE }}
+          notarizationUser: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          notarizationPassword: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+      - name: Build Plugin 🧱
+        uses: ./.github/actions/build-plugin
+        with:
+          target: macos-universal
+          codesign: ${{ fromJSON(needs.check-event.outputs.codesign) }}
+      - name: Package Plugin 📀
+        uses: ./.github/actions/package-plugin
+        with:
+          target: macos-universal
+          package: ${{ fromJSON(needs.check-event.outputs.package) }}
+          codesign: ${{ fromJSON(needs.check-event.outputs.codesign) && fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
+          codesignIdent: ${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}
+          installerIdent: ${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}
+          notarize: ${{ fromJSON(needs.check-event.outputs.notarize) && fromJSON(steps.codesign.outputs.haveNotarizationUser) }}
+          codesignUser: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          codesignPass: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+      - name: Upload artifacts 📡
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-macos-universal-${{ needs.check-event.outputs.commitHash }}
+          path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-macos-universal.*
+  ubuntu-build:
+    name: Build for Ubuntu 🐧
+    runs-on: ubuntu-22.04
+    needs: check-event
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Setup Environment 🔧
+        id: setup
+        run: |
+          : Setup Environment 🔧
+          read -r product_name product_version <<< \
+            "$(jq -r '. | {name, version} | join(" ")' buildspec.json)"
+
+          echo "pluginName=${product_name}" >> $GITHUB_OUTPUT
+          echo "pluginVersion=${product_version}" >> $GITHUB_OUTPUT
+      - uses: actions/cache@v3
+        id: ccache-cache
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-x86_64-${{ github.event_name }}-${{ github.head_ref }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-x86_64-push-
+      - name: Build OBS-Studio 🧱
+        uses: ./.github/actions/build-plugin
+        with:
+          target: x86_64
+      - name: Package OBS-Studio 📀
+        uses: ./.github/actions/package-plugin
+        with:
+          package: ${{ fromJSON(needs.check-event.outputs.package) }}
+          target: x86_64
+      - name: Upload source tarball 🗜️
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-sources-${{ needs.check-event.outputs.commitHash }}
+          path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-source.*
+      - name: Upload artifacts 📡
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-ubuntu-22.04-x86_64-${{ needs.check-event.outputs.commitHash }}
+          path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-x86_64*.*
+      - name: Upload debug symbol artifacts 🪲
+        uses: actions/upload-artifact@v3
+        if: ${{ fromJSON(needs.check-event.outputs.package) }}
+        with:
+          name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-ubuntu-22.04-x86_64-${{ needs.check-event.outputs.commitHash }}-dbgsym
+          path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-x86_64*-dbgsym.ddeb
+  windows-build:
+    name: Build for Windows 🪟
+    runs-on: windows-2022
+    needs: check-event
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Setup Environment 🔧
+        id: setup
+        run: |
+          # Setup Environment 🔧
+
+          $BuildSpec = Get-Content -Path buildspec.json -Raw | ConvertFrom-Json
+          $ProductName = $BuildSpec.name
+          $ProductVersion = $BuildSpec.version
+
+          "pluginName=${ProductName}" >> $env:GITHUB_OUTPUT
+          "pluginVersion=${ProductVersion}" >> $env:GITHUB_OUTPUT
+      - name: Build OBS-Studio 🧱
+        uses: ./.github/actions/build-plugin
+        with:
+          target: x64
+      - name: Package OBS-Studio 📀
+        uses: ./.github/actions/package-plugin
+        with:
+          target: x64
+          package: ${{ fromJSON(needs.check-event.outputs.package) }}
+      - name: Upload artifacts 📡
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-windows-x64-${{ needs.check-event.outputs.commitHash }}
+          path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-windows-x64*.*

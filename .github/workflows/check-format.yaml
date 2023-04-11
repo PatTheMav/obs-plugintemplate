@@ -1,0 +1,32 @@
+name: Check Code Formatting 🛠️
+on:
+  workflow_call:
+jobs:
+  clang-format:
+    if: ${{ contains(fromJSON('["push", "pull_request"]'), github.event_name) }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up Homebrew 🍺
+        uses: Homebrew/actions/setup-homebrew@master
+      - name: clang-format check 🐉
+        id: clang-format
+        uses: ./.github/actions/run-clang-format
+        with:
+          failCondition: error
+  cmake-format:
+    if: ${{ contains(fromJSON('["push", "pull_request"]'), github.event_name) }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up Homebrew 🍺
+        uses: Homebrew/actions/setup-homebrew@master
+      - name: cmake-format check 🎛️
+        id: cmake-format
+        uses: ./.github/actions/run-cmake-format
+        with:
+          failCondition: error

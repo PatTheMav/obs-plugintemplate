@@ -1,0 +1,14 @@
+name: Scheduled
+run-name: Scheduled Repository Actions ⏰
+on:
+  schedule:
+    - cron: 0 0 * * *
+permissions:
+  contents: write
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.head_ref || github.ref }}'
+  cancel-in-progress: true
+jobs:
+  check-and-build:
+    uses: ./.github/workflows/build-project.yaml
+    secrets: inherit

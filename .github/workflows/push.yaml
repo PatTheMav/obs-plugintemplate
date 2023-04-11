@@ -1,0 +1,115 @@
+name: Push to master
+run-name: ${{ github.ref_name }} push run 🚀
+on:
+  push:
+    branches:
+      - master
+      - 'release/**'
+    tags:
+      - '*'
+permissions:
+  contents: write
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.ref }}'
+  cancel-in-progress: true
+jobs:
+  check-format:
+    uses: ./.github/workflows/check-format.yaml
+    if: ${{ github.ref_name == 'master' }}
+  build-project:
+    uses: ./.github/workflows/build-project.yaml
+    secrets: inherit
+  create-release:
+    if: ${{ github.repository_owner == 'obsproject' && startsWith(github.ref, 'refs/tags') }}
+    runs-on: ubuntu-22.04
+    needs: build-project
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check Release Tag ☑️
+        id: check
+        run: |
+          : Check Release Tag ☑️
+          shopt -s extglob
+
+          case "${GITHUB_REF_NAME}" in
+            +([0-9]).+([0-9]).+([0-9]) )
+              echo 'validTag=true' >> $GITHUB_OUTPUT
+              echo 'prerelease=false' >> $GITHUB_OUTPUT
+              echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+              ;;
+            +([0-9]).+([0-9]).+([0-9])-@(beta|rc)*([0-9]) )
+              echo 'validTag=true' >> $GITHUB_OUTPUT
+              echo 'prerelease=true' >> $GITHUB_OUTPUT
+              echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+              ;;
+            *) echo 'validTag=false' >> $GITHUB_OUTPUT ;;
+          esac
+
+          commit_hash="${GITHUB_SHA:0:9}"
+          read -r product_name product_version <<< \
+            "$(jq -r '. | {name, version} | join(" ")' buildspec.json)"
+
+          echo "productName=${product_name}" >> $GITHUB_OUTPUT
+          echo "productVersion=${product_version}" >> $GITHUB_OUTPUT
+      - name: Download build artifacts 📥
+        uses: actions/download-artifact@v3
+        if: ${{ fromJSON(steps.check.outputs.validTag) }}
+      - name: Rename Files 🏷️
+        if: ${{ fromJSON(steps.check.outputs.validTag) }}
+        run: |
+          : Rename Files 🏷️
+          shopt -s extglob
+          shopt -s nullglob
+
+          root_dir="$(pwd)"
+
+          prefix='${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}'
+          variants=(
+            'windows-x64;zip|exe'
+            'macos-universal;tar.xz|pkg'
+            'ubuntu-22.04-x86_64;tar.xz|deb'
+            'sources;tar.xz'
+          )
+
+          for variant_data in ${variants[@]}; do
+            IFS=';' read -r variant suffix <<< "${variant_data}"
+
+            artifact_name="${prefix}-${variant}-${commit_hash}"
+
+            if [[ -f "${artifact_name}/${artifact_name}"*.${suffix} ]]; then
+              mv "${artifact_name}/${artifact_name}"*.${suffix} "${root_dir}"
+            fi
+
+            if [[ "${variant}" == 'ubuntu-22.04-x86_64' && -f "${artifact_name}/${artifact_name}-*-dbgsym.ddeb ]]; then
+              mv "${artifact_name}/${artifact_name}-*-dbgsym.ddeb "${root_dir}"
+            fi
+          done
+      - name: Generate Checksums 🪪
+        if: ${{ fromJSON(steps.check.outputs.validTag) }}
+        run: |
+          : Generate Checksums 🪪
+          shopt -s extglob
+          echo "### Checksums" > ${{ github.workspace }}/CHECKSUMS.txt
+          for file in ${{ github.workspace }}/@(*.exe|*.deb|*.ddeb|*.pkg|*.tar.xz|*.zip); do
+            echo "    ${file##*/}: $(sha256sum "${file}" | cut -d " " -f 1)" >> ${{ github.workspace }}/CHECKSUMS.txt
+          done
+
+      - name: Create Release 🛫
+        if: ${{ fromJSON(steps.check.outputs.validTag) }}
+        id: create_release
+        uses: softprops/action-gh-release@d4e8205d7e959a9107da6396278b2f1f07af0f9b
+        with:
+          draft: true
+          prerelease: ${{ fromJSON(steps.check.outputs.prerelease) }}
+          tag_name: ${{ steps.check.outputs.version }}
+          name: OBS Studio ${{ steps.check.outputs.version }}
+          body_path: ${{ github.workspace }}/CHECKSUMS.txt
+          files: |
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.exe
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.zip
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.dmg
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.deb
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.ddeb
+            ${{ github.workspace }}/${{ steps.check.outputs.productName }}-${{ steps.check.outputs.productVersion }}-*.tar.xz

@@ -1,0 +1,20 @@
+name: Pull Request
+run-name: ${{ github.head_ref }} pull request run 🚀
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+    branches: [master]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+permissions:
+  contents: read
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+jobs:
+  check-format:
+    uses: ./.github/workflows/check-format.yaml
+  build-project:
+    uses: ./.github/workflows/build-project.yaml
+    secrets: inherit
