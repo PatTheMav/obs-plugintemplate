@@ -16,21 +16,40 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
+#include <stdio.h>
 #include <obs-module.h>
 
-#include "plugin-macros.generated.h"
+const char *PLUGIN_VERSION = (const char *)_VERSION;
+const char *PLUGIN_NAME = (const char *)_NAME;
+
+static void obs_log(int log_level, const char *format, ...)
+{
+	size_t length = 4 + strlen(PLUGIN_NAME) + strlen(format);
+
+	char *prefix = malloc(length + 1);
+
+	snprintf(prefix, length, "[%s] %s", PLUGIN_NAME, format);
+
+	va_list(args);
+
+	va_start(args, format);
+	blogva(log_level, prefix, args);
+	va_end(args);
+
+	free(prefix);
+}
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 bool obs_module_load(void)
 {
-	blog(LOG_INFO, "plugin loaded successfully (version %s)",
-	     PLUGIN_VERSION);
+	obs_log(LOG_INFO, "plugin loaded successfully (version %s)",
+		PLUGIN_VERSION);
 	return true;
 }
 
 void obs_module_unload()
 {
-	blog(LOG_INFO, "plugin unloaded");
+	obs_log(LOG_INFO, "plugin unloaded");
 }
