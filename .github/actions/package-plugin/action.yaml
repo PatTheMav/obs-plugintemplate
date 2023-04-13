@@ -4,10 +4,6 @@ inputs:
   target:
     description: 'Build target for dependencies'
     required: true
-  config:
-    description: 'Build configuration'
-    required: false
-    default: 'Release'
   codesign:
     description: 'Enable codesigning (macOS only)'
     required: false
@@ -32,8 +28,8 @@ inputs:
     description: 'Apple ID password for notarization (macOS only)'
     required: false
     default: ''
-  createInstaller:
-    description: 'Create InnoSetup installer (Windows only)'
+  package:
+    description: 'Create Windows or macOS installation package'
     required: false
     default: 'false'
   workingDirectory:
@@ -52,46 +48,50 @@ runs:
         CODESIGN_IDENT_USER: ${{ inputs.codesignUser }}
         CODESIGN_IDENT_PASS: ${{ inputs.codesignPass }}
       run: |
-        package_args=(
-          -c ${{ inputs.config }}
-          -t macos-${{ inputs.target }}
-        )
+        : Run macOS packaging
+        local -a package_args=()
 
         if [[ '${{ inputs.codesign }}' == 'true' ]] package_args+=(-s)
         if [[ '${{ inputs.notarize }}' == 'true' ]] package_args+=(-n)
-        if (( ${+CI} && ${+RUNNER_DEBUG} )) build_args+=(--debug)
+        if [[ '${{ inputs.package }}' == 'true' ]] package_args+=(-p)
+        if (( ${+CI} && ${+RUNNER_DEBUG} )) package_args+=(--debug)
 
-        ${{ inputs.workingDirectory }}/.github/scripts/package-macos.zsh ${package_args}
+        ${{ inputs.workingDirectory }}/.github/scripts/package-macos ${package_args}
 
     - name: Run Linux packaging
       if: ${{ runner.os == 'Linux' }}
       shell: bash
       run: |
+        : Run Linux packaging
         package_args=(
-          -c ${{ inputs.config }}
           -t linux-${{ inputs.target }}
         )
-        if [[ -n "${CI}" && -n "${RUNNER_DEBUG}" ]]; then
-          build_args+=(--debug)
+
+        if [[ '${{ inputs.package }}' == 'true' ]]; then
+          package_args+=(-p)
         fi
 
-        ${{ inputs.workingDirectory }}/.github/scripts/package-linux.sh "${package_args[@]}"
+        if [[ -n "${CI}" && -n "${RUNNER_DEBUG}" ]]; then
+          package_args+=(--debug)
+        fi
+
+        ${{ inputs.workingDirectory }}/.github/scripts/package-linux "${package_args[@]}"
 
     - name: Run Windows packaging
       if: ${{ runner.os == 'Windows' }}
       shell: pwsh
       run: |
+        # Run Windows packaging
         $PackageArgs = @{
           Target = '${{ inputs.target }}'
-          Configuration = '${{ inputs.config }}'
         }
 
-        if ( '${{ inputs.createInstaller }}' -eq 'true' ) {
+        if ( '${{ inputs.package }}' -eq 'true' ) {
           $PackageArgs += @{BuildInstaller = $true}
         }
 
         if ( ( Test-Path env:CI ) -and ( Test-Path env:RUNNER_DEBUG ) ) {
-          $BuildArgs += @{
+          $PackageArgs += @{
             Debug = $true
           }
         }

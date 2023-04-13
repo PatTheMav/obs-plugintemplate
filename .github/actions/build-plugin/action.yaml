@@ -4,10 +4,6 @@ inputs:
   target:
     description: 'Build target for dependencies'
     required: true
-  config:
-    description: 'Build configuration'
-    required: false
-    default: 'Release'
   codesign:
     description: 'Enable codesigning (macOS only)'
     required: false
@@ -16,10 +12,6 @@ inputs:
     description: 'Developer ID for application codesigning (macOS only)'
     required: false
     default: '-'
-  visualStudio:
-    description: 'Visual Studio version (Windows only)'
-    required: false
-    default: 'Visual Studio 16 2019'
   workingDirectory:
     description: 'Working directory for packaging'
     required: false
@@ -33,22 +25,20 @@ runs:
       env:
         CODESIGN_IDENT: ${{ inputs.codesignIdent }}
       run: |
-        build_args=(
-          -c ${{ inputs.config }}
-          -t macos-${{ inputs.target }}
-        )
+        : Run macOS Build
+        local -a build_args=()
 
         if [[ '${{ inputs.codesign }}' == 'true' ]] build_args+=(-s)
         if (( ${+CI} && ${+RUNNER_DEBUG} )) build_args+=(--debug)
 
-        ${{ inputs.workingDirectory }}/.github/scripts/build-macos.zsh ${build_args}
+        ${{ inputs.workingDirectory }}/.github/scripts/build-macos ${build_args}
 
     - name: Run Linux Build
       if: ${{ runner.os == 'Linux' }}
       shell: bash
       run: |
+        : Run Linux Build
         build_args=(
-          -c ${{ inputs.config }}
           -t linux-${{ inputs.target }}
         )
 
@@ -56,16 +46,15 @@ runs:
           build_args+=(--debug)
         fi
 
-        ${{ inputs.workingDirectory }}/.github/scripts/build-linux.sh "${build_args[@]}"
+        ${{ inputs.workingDirectory }}/.github/scripts/build-linux "${build_args[@]}"
 
     - name: Run Windows Build
       if: ${{ runner.os == 'Windows' }}
       shell: pwsh
       run: |
+        # Run Windows Build
         $BuildArgs = @{
           Target = '${{ inputs.target }}'
-          Configuration = '${{ inputs.config }}'
-          CMakeGenerator = '${{ inputs.visualStudio }}'
         }
 
         if ( ( Test-Path env:CI ) -and ( Test-Path env:RUNNER_DEBUG ) ) {

@@ -1,0 +1,48 @@
+name: Run cmake-format
+description: Runs cmake-format and checks for any changes introduced by it
+inputs:
+  failCondition:
+    description: Should checks result in error response
+    required: false
+    default: 'never'
+  workingDirectory:
+    description: Working directory for checks
+    required: false
+    default: ${{ github.workspace }}
+runs:
+  using: composite
+  steps:
+    - name: Check Runner Operating System 🏃‍♂️
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: |
+        : Check Runner Operating System 🏃‍♂️
+        echo "::notice::run-cmake-format action requires a macOS- or Linux-based runner."; exit 2
+    - name: Install Dependencies
+      if: ${{ runner.os == 'linux' }}
+      run: |
+        : Install Dependencies
+        echo ::group::Install Dependencies
+        brew install --quiet zsh
+        echo ::endgroup::
+      shell: bash
+    - run: |
+        : cmake-format
+        if [[ ${GITHUB_EVENT_NAME} == 'pull_request' ]] {
+          local -a changes=($(git diff --name-only origin/"${GITHUB_BASE_REF}" HEAD))
+        } else {
+          local -a changes=($(git diff --name-only HEAD^1 HEAD))
+        }
+        if (( ${changes[(I)*.cmake|*CMakeLists.txt]} )) {
+          echo ::group::Install cmakelang
+          pip3 install cmakelang
+          echo ::endgroup::
+          echo ::group::Run cmake-format
+          ./.github/scripts/run-cmake-format --fail-${{ inputs.failCondition }} --check
+          echo ::endgroup::
+        }
+        echo "Pass :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+      id: result
+      name: run-cmake-format
+      shell: zsh {0}
+      working-directory: ${{ github.workspace }}
