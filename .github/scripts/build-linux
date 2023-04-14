@@ -1,0 +1,22 @@
+#!/bin/sh
+
+if [ "${CI}" ]; then
+  _start_group='::group::'
+  _end_group='::endgroup::'
+else
+  _start_group=' => '
+  _end_group=''
+fi
+
+if ! type zsh > /dev/null 2>&1; then
+  echo "${_start_group}Installing script dependency Zsh."
+
+  sudo apt-get update
+  sudo apt-get ${CI:+-y} --no-install-recommends install zsh
+  echo "${_end_group}"
+fi
+
+SCRIPT=$(readlink -f "${0}")
+SCRIPT_DIR=$(dirname "${SCRIPT}")
+
+zsh ${SCRIPT_DIR}/.build-linux.zsh "${@}"

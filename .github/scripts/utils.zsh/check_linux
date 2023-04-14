@@ -1,5 +1,6 @@
-autoload -Uz log_info log_status log_error log_debug log_warning
+autoload -Uz log_info log_status log_error log_debug log_warning log_group
 
+log_group 'Check Linux build requirements'
 log_debug 'Checking for apt-get...'
 if (( ! ${+commands[apt-get]} )) {
   log_error 'No apt-get command found. Please install apt'
@@ -26,11 +27,18 @@ for dependency (${dependencies}) {
   if (( ! ${+commands[${binary}]} )) install_list+=(${tokens[2]})
 }
 
-local -a _quiet=('' '--quiet')
-
 log_debug "List of dependencies to install: ${install_list}"
 if (( ${#install_list} )) {
   if (( ! ${+CI} )) log_warning 'Dependency installation via apt may require elevated privileges'
 
-  sudo apt-get -y install ${install_list} ${_quiet[(( (_loglevel == 0) + 1 ))]}
+  local -a apt_args=(
+    ${CI:+-y}
+    --no-install-recommends
+  )
+  if (( _loglevel == 0 )) apt_args+=(--quiet)
+
+  sudo apt-get ${apt_args} install ${install_list}
 }
+
+rehash
+log_group
