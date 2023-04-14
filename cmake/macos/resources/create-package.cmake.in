@@ -1,0 +1,5 @@
+set(CMAKE_PROJECT_NAME ${CMAKE_PROJECT_NAME})
+set(CMAKE_PROJECT_VERSION ${CMAKE_PROJECT_VERSION})
+set(MACOS_BUNDLEID ${MACOS_BUNDLEID})
+configure_file(cmake/macos/resources/installer-macos.pkgproj.in
+  "${CMAKE_BINARY_DIR}/installer-macos.generated.pkgproj")
