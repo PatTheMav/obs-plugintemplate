@@ -1,9 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Debug', 'RelWithDebInfo', 'Release', 'MinSizeRel')]
-    [string] $Configuration = 'RelWithDebInfo',
-    [ValidateSet('x86', 'x64', 'x86+x64')]
-    [string] $Target,
+    [ValidateSet('x64')]
+    [string] $Target = 'x64',
     [switch] $BuildInstaller = $false
 )
 
@@ -21,7 +19,9 @@ if ( $PSVersionTable.PSVersion -lt '7.0.0' ) {
 
 function Package {
     trap {
+        Pop-Location -Stack BuildTemp -ErrorAction 'SilentlyContinue'
         Write-Error $_
+        Log-Group
         exit 2
     }
 
@@ -44,7 +44,22 @@ function Package {
 
     Install-BuildDependencies -WingetFile "${ScriptHome}/.Wingetfile"
 
-    Log-Information "Packaging ${ProductName}..."
+    if ( $Env:CI -ne $null ) {
+        switch ( $Env:GITHUB_EVENT_NAME ) {
+            pull_request {
+                $BuildConfiguration = 'RelWithDebInfo'
+            }
+            push {
+                if ( $Env:GITHUB_REF_NAME -match '[0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)?' ) {
+                    $BuildConfiguration = 'Release'
+                } else {
+                    $BuildConfiguration = 'RelWithDebInfo'
+                }
+            }
+        }
+    } else {
+        $BuildConfiguration = 'Release'
+    }
 
     $RemoveArgs = @{
         ErrorAction = 'SilentlyContinue'
@@ -57,17 +72,8 @@ function Package {
     Remove-Item @RemoveArgs
 
     if ( ( $BuildInstaller ) ) {
-        if ( $Target -eq 'x86+x64' ) {
-            $IsccCandidates = Get-ChildItem -Recurse -Path '*.iss'
-
-            if ( $IsccCandidates.length -gt 0 ) {
-                $IsccFile = $IsccCandidates[0].FullName
-            } else {
-                $IsccFile = ''
-            }
-        } else {
-            $IsccFile = "${ProjectRoot}/build_${Target}/installer-Windows.generated.iss"
-        }
+        Log-Group "Packaging ${ProductName}..."
+        $IsccFile = "${ProjectRoot}/build_${Target}/installer-Windows.generated.iss"
 
         if ( ! ( Test-Path -Path $IsccFile ) ) {
             throw 'InnoSetup install script not found. Run the build script or the CMake build and install procedures first.'
@@ -76,17 +82,22 @@ function Package {
         Log-Information 'Creating InnoSetup installer...'
         Push-Location -Stack BuildTemp
         Ensure-Location -Path "${ProjectRoot}/release"
-        Invoke-External iscc ${IsccFile} /O. /F"${OutputName}-Installer"
+        Copy-Item -Path ${BuildConfiguration} -Destination Package -Recurse
+        Invoke-External iscc ${IsccFile} /O"${ProjectRoot}/release" /F"${OutputName}-Installer"
+        Remove-Item -Path Package -Recurse
         Pop-Location -Stack BuildTemp
-    }
+    } else {
+        Log-Group "Archiving ${ProductName}..."
+        $CompressArgs = @{
+            Path = (Get-ChildItem -Path "${ProjectRoot}/release/${BuildConfiguration}" -Exclude "${OutputName}*.*")
+            CompressionLevel = 'Optimal'
+            DestinationPath = "${ProjectRoot}/release/${OutputName}.zip"
+            Verbose = ($Env:CI -ne $null)
+        }
 
-    $CompressArgs = @{
-        Path = (Get-ChildItem -Path "${ProjectRoot}/release" -Exclude "${OutputName}*.*")
-        CompressionLevel = 'Optimal'
-        DestinationPath = "${ProjectRoot}/release/${OutputName}.zip"
+        Compress-Archive -Force @CompressArgs
     }
-
-    Compress-Archive -Force @CompressArgs
+    Log-Group
 }
 
 Package
