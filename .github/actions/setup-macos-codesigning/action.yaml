@@ -64,7 +64,7 @@ runs:
         MAOCS_SIGNING_CERT_PASSWORD: ${{ inputs.certificatePassword }}
         MACOS_KEYCHAIN_PASSWORD: ${{ inputs.keychainPassword }}
       run: |
-        : macOS Codesigning ✍️
+        : macOS Code Signing ✍️
         if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
         if [[ ${MACOS_SIGNING_IDENTITY} && ${MACOS_SIGNING_IDENTITY_INSTALLER} && ${MACOS_SIGNING_CERT} ]] {
@@ -73,7 +73,7 @@ runs:
           local -r certificate_path="${RUNNER_TEMP}/build_certificate.p12"
           local -r keychain_path="${RUNNER_TEMP}/app-signing.keychain-db"
 
-          print -n "${MACOS_SIGNING_CERT}" | base64 --decode --output="${certificate_path}"
+          print -n "${MACOS_SIGNING_CERT}" | base64 --decode --output=${certificate_path}
 
           : "${MACOS_KEYCHAIN_PASSWORD:="$(print ${RANDOM} | shasum | head -c 32)"}"
 
@@ -112,12 +112,12 @@ runs:
         : Provisioning Profile 👤
         if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
-        if [[ ${MACOS_SIGNING_PROVISIONING_PROFILE} ]] {
+        if [[ "${MACOS_SIGNING_PROVISIONING_PROFILE}" ]] {
           print 'haveProvisioningProfile=true' >> $GITHUB_OUTPUT
 
           local -r profile_path="${RUNNER_TEMP}/build_profile.provisionprofile"
           print -n "${MACOS_SIGNING_PROVISIONING_PROFILE}" \
-            | base64 --decode --output ${profile_path}
+            | base64 --decode --output="${profile_path}"
 
           print '::group::Provisioning Profile Setup'
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
@@ -125,7 +125,7 @@ runs:
           local -r uuid="$(plutil -extract UUID raw ${RUNNER_TEMP}/build_profile.plist)"
           local -r team_id="$(plutil -extract TeamIdentifier.0 raw -expect string ${RUNNER_TEMP}/build_profile.plist)"
 
-          if [[ ${team_id} != '${{ steps.codesign.codesignTeam }}' ]] {
+          if [[ ${team_id} != '${{ steps.codesign.outputs.codesignTeam }}' ]] {
             print '::notice::Code Signing team in provisioning profile does not match certificate.'
           }
 
@@ -137,9 +137,9 @@ runs:
         }
 
     - name: Notarization 🧑‍💼
-      shell: zsh --no-rcs --errexit --pipefail {0}
       id: notarization
-      if: ${{ fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
+      if: fromJSON(steps.codesign.outputs.haveCodesignIdent)
+      shell: zsh --no-rcs --errexit --pipefail {0}
       env:
           MACOS_NOTARIZATION_USERNAME: ${{ inputs.notarizationUser }}
           MACOS_NOTARIZATION_PASSWORD: ${{ inputs.notarizationPassword }}

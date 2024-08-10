@@ -19,12 +19,12 @@ function Install-BuildDependencies {
     }
 
     $Prefixes = @{
-        'x64' = ${Env:ProgramFiles}
-        'x86' = ${Env:ProgramFiles(x86)}
-        'arm64' = ${Env:ProgramFiles(arm)}
+        'x64' = ${env:ProgramFiles}
+        'x86' = ${env:ProgramFiles(x86)}
+        'arm64' = ${env:ProgramFiles(arm)}
     }
 
-    $Paths = $Env:Path -split [System.IO.Path]::PathSeparator
+    $Paths = $env:Path -split [System.IO.Path]::PathSeparator
 
     $WingetOptions = @('install', '--accept-package-agreements', '--accept-source-agreements')
 
@@ -39,9 +39,9 @@ function Install-BuildDependencies {
         $Prefixes.GetEnumerator() | ForEach-Object {
             $Prefix = $_.value
             $FullPath = "${Prefix}\${Path}"
-            if ( ( Test-Path $FullPath  ) -and ! ( $Paths -contains $FullPath ) ) {
+            if ( ( Test-Path $FullPath ) -and ! ( $Paths -contains $FullPath ) ) {
                 $Paths = @($FullPath) + $Paths
-                $Env:Path = $Paths -join [System.IO.Path]::PathSeparator
+                $env:Path = $Paths -join [System.IO.Path]::PathSeparator
             }
         }
 
@@ -54,7 +54,7 @@ function Install-BuildDependencies {
             Log-Status "Installing package ${Package} $(if ( $Version -ne $null ) { "Version: ${Version}" } )"
 
             if ( $Version -ne $null ) {
-                $WingetOptions += @('--version', ${Version})
+                $WingGetOptions += @('--version', ${Version})
             }
 
             try {
