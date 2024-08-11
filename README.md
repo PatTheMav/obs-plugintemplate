@@ -52,7 +52,7 @@ Windows and macOS dependency downloads are configured in the `buildspec.json` fi
     * `obs-studio`: Version of OBS Studio to build plugin with (needed for `libobs` and `obs-frontend-api`)
     * `prebuilt`: Prebuilt OBS Studio dependencies
     * `qt6`: Prebuilt version of Qt6 as used by OBS Studio
-* `tools`: Contains additional build tools used by CI
+* `tools`: Contains additional build tools used by CI (Optional)
 
 The values should be kept in sync with OBS Studio releases and the `buildspec.json` file in use by the main project to ensure that the plugin is developed and built in sync with its target environment.
 
@@ -68,7 +68,7 @@ Linux dependencies need to be resolved using the package management tools approp
     * `pkg-config`
 * Build Dependencies:
     * `build-essential`
-    * `libobs-dev`
+    * `obs-studio`
 * Qt6 Dependencies:
     * `qt6-base-dev`
     * `libqt6svg6-dev`
@@ -80,14 +80,12 @@ To create a build configuration, `cmake` needs to be installed on the system. Th
 
 * `macos`
     * Universal architecture (supports Intel-based CPUs as Apple Silicon)
-    * Defaults to Qt version `6`
     * Defaults to macOS deployment target `11.0`
 * `macos-ci`
     * Inherits from `macos`
     * Enables compile warnings as error
 * `windows-x64`
     * Windows 64-bit architecture
-    * Defaults to Qt version `6`
     * Defaults to Visual Studio 17 2022
     * Defaults to Windows SDK version `10.0.18363.657`
 * `windows-ci-x64`
@@ -95,20 +93,10 @@ To create a build configuration, `cmake` needs to be installed on the system. Th
     * Enables compile warnings as error
 * `linux-x86_64`
     * Linux x86_64 architecture
-    * Defaults to Qt version `6`
     * Defaults to Ninja as build tool
     * Defaults to `RelWithDebInfo` build configuration
 * `linux-ci-x86_64`
     * Inherits from `linux-x86_64`
-    * Enables compile warnings as error
-* `linux-aarch64`
-    * Provided as an experimental preview feature
-    * Linux aarch64 (ARM64) architecture
-    * Defaults to Qt version `6`
-    * Defaults to Ninja as build tool
-    * Defaults to `RelWithDebInfo` build configuration
-* `linux-ci-aarch64`
-    * Inherits from `linux-aarch64`
     * Enables compile warnings as error
 
 Presets can be either specified on the command line (`cmake --preset <PRESET>`) or via the associated select field in the CMake Windows GUI. Only presets appropriate for the current build host are available for selection.
