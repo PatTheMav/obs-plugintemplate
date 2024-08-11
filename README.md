@@ -8,7 +8,79 @@ The plugin template is meant to be used as a starting point for OBS Studio plugi
 * A CMake project file
 * GitHub Actions workflows and repository actions
 
-## Set Up
+## QuickStart Guide
+
+### Build Environment
+
+| Platform  | Tool   |
+|-----------|--------|
+| Windows   | Visal Studio 17 2022 |
+| macOS     | XCode 16.0 |
+| Windows, macOS  | CMake 3.30.5 |
+| Ubuntu 24.04 | CMake 3.28.3 |
+| Ubuntu 24.04 | `ninja-build` |
+| Ubuntu 24.04 | `pkg-config`
+| Ubuntu 24.04 | `build-essential` |
+
+### Build Steps
+
+* Configure `buildspec.json` to contain your plugin metadata and - if necessary - update dependency information
+* **Ubuntu only**: Have build dependencies installed:
+    * `obs-studio`[^1]
+    * `libgles2-mesa-dev`
+    * `qt6-base-dev`, `libqt6svg6-dev`, and `qt6-base-private-dev`[^2]
+
+* Run `cmake` to configure, build, and package the plugin (elements in square brackets are optional):
+    * Configure: `cmake --preset <windows-x64|macos|ubuntu-x86_64>`
+        * `[-DENABLE_QT=ON]`[^2]
+        * `[-DENABLE_FRONTEND_API=ON]`[^3]
+        * `[-DENABLE_CCACHE=ON]`[^4]
+    * Build: `cmake --build --preset <windows-x64|macos|ubuntu-x86_64>`
+        * `[--config <Release|RelWithDebInfo|Debug>]`[^5]
+    * Install: `cmake --install <build_x64|build_macos|build_ubuntu>`
+        * `[--prefix <desired installation location]`
+    * Package: `cmake --build --preset ubuntu-x86_64 --target package` (_Ubuntu only_)
+
+[^1]: Requires `sudo add-apt-repository --yes ppa:obsproject/obs-studio` to be run first to ensure ppa package is installed
+[^2]: Only if the plugin provides its own Qt-based widgets or dialogs
+[^3]: Only if the plugin interacts with the OBS Studio frontend via its frontend API
+[^4]: Can be enabled to speed up local builds if necessary, refer to Ccache documentation about possible caveats
+[^5]: By default `RelWithDebInfo` is used, CI will also use `Release` to generate release builds.
+
+### Package Steps
+
+#### Windows
+
+* Generate installer executable with InnoSetup:
+```PowerShell
+iscc <Path-To-Checkout>/build_<ARCHITECTURE>/installer-Windows.generated.iss /O"<Path-To-Checkout>/release" /F"<Your-Plugin-Name>-Installer"
+```
+* Generate ZIP archive:
+```PowerShell
+Compress-Archive -Path <Path-To-Checkout>/release/RelWithDebInfo -CompressionLevel Optimal -DestinationPath <Path-To-Checkout>/release/<Your-Plugin-Name>.zip
+```
+
+#### macOS
+
+* Codesign package:
+```Bash
+productsign --sign "<Your-Developer-ID-Installer-Cert-Name>" "<Path-To-Checkout>/release/RelWithDebInfo/<Your-Plugin-Name>.pkg"
+```
+* Notarize package following [Apple's instructions](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow#Upload-your-app-to-the-notarization-service)
+* Distribute generated package in `<Path-To-Checkout>/release/RelWithDebInfo/<Your-Plugin-Name>.pkg`
+
+#### Ubuntu
+* Generate an Ubuntu-style `deb` package:
+```Bash
+cmake --prefix ubuntu-x86_64 --target package
+```
+* Generate compressed tar archive
+```Bash
+cd <Path-To-Checkout>/release/RelWithDebInfo
+XZ_OPT=-T0 tar -cJf <Path-To-Checkout>/release/<Your-Plugin-Name>.tar.xz lib share
+```
+
+## Detailed Setup
 
 The plugin project is set up using the included `buildspec.json` file. The following fields should be customized for an actual plugin:
 
@@ -18,8 +90,6 @@ The plugin project is set up using the included `buildspec.json` file. The follo
 * `website`: URL of a website associated with the plugin
 * `email`: Contact email address associated with the plugin
 * `uuids`
-    * `macosPackage`: Unique (**!**) identifier for the macOS plugin package
-    * `macosInstaller`: Unique (**!**) identifier for the macOS plugin installer
     * `windowsApp`: Unique (**!**) identifier for the Windows plugin installer
 
 These values are read and processed automatically by the CMake build scripts, so no further adjustments in other files are needed.
@@ -32,7 +102,7 @@ Platform-specific settings are set up in the `platformConfig` section of the bui
 
 ### Set Up Build Dependencies
 
-Just like OBS Studio itself, plugins need to be built using dependencies available either via the `obs-deps` repository (Windows and macOS) or via a distribution's package system (Linux).
+Just like OBS Studio itself, plugins need to be built using dependencies available either via the `obs-deps` repository (Windows and macOS) or via a distribution's package system (Ubuntu).
 
 #### Choose An OBS Studio Version
 
@@ -42,7 +112,7 @@ By default the plugin template specifies the most current official OBS Studio ve
 * Plugins targeting the _latest_ version of OBS Studio might not work in older versions because the internal data structures used by `libobs` might not be compatible
 * Users are encouraged to always update to the most recent version of OBS Studio available within a reasonable time after release - plugin authors have to choose for themselves if they'd rather keep up with OBS Studio releases or stay with an older version as their baseline (which might of course preclude the plugin from using functionality introduced in a newer version)
 
-On Linux, the version used for development might be decided by the specific version available via a distribution's package management system, so OBS Studio compatibility for plugins might be determined by those versions instead.
+On Ubuntu, the version used for development might be decided by the specific version available via a distribution's package management system, so OBS Studio compatibility for plugins might be determined by those versions instead.
 
 #### Windows and macOS
 
@@ -52,15 +122,15 @@ Windows and macOS dependency downloads are configured in the `buildspec.json` fi
     * `obs-studio`: Version of OBS Studio to build plugin with (needed for `libobs` and `obs-frontend-api`)
     * `prebuilt`: Prebuilt OBS Studio dependencies
     * `qt6`: Prebuilt version of Qt6 as used by OBS Studio
-* `tools`: Contains additional build tools used by CI
+* `tools`: Contains additional build tools used by CI (Optional)
 
 The values should be kept in sync with OBS Studio releases and the `buildspec.json` file in use by the main project to ensure that the plugin is developed and built in sync with its target environment.
 
 To update a dependency, change the `version` and associated `hashes` entries to match the new version. The used hash algorithm is `sha256`.
 
-#### Linux
+#### Ubuntu
 
-Linux dependencies need to be resolved using the package management tools appropriate for the local distribution. As an example, building on Ubuntu requires the following packages to be installed:
+Ubuntu dependencies need to be resolved using the package management tools appropriate for the local distribution. As an example, building on Ubuntu requires the following packages to be installed:
 
 * Build System Dependencies:
     * `cmake`
@@ -68,8 +138,8 @@ Linux dependencies need to be resolved using the package management tools approp
     * `pkg-config`
 * Build Dependencies:
     * `build-essential`
-    * `libobs-dev`
-* Qt6 Dependencies:
+    * `obs-studio` - **Important:** Needs to be installed via the `ppa` package
+* Qt6 Dependencies (if custom Qt widgets or dialogs are provided by the plugin):
     * `qt6-base-dev`
     * `libqt6svg6-dev`
     * `qt6-base-private-dev`
@@ -80,46 +150,77 @@ To create a build configuration, `cmake` needs to be installed on the system. Th
 
 * `macos`
     * Universal architecture (supports Intel-based CPUs as Apple Silicon)
-    * Defaults to Qt version `6`
     * Defaults to macOS deployment target `11.0`
 * `macos-ci`
     * Inherits from `macos`
     * Enables compile warnings as error
 * `windows-x64`
     * Windows 64-bit architecture
-    * Defaults to Qt version `6`
     * Defaults to Visual Studio 17 2022
-    * Defaults to Windows SDK version `10.0.18363.657`
+    * Defaults to Windows SDK version `10.0.22621`
 * `windows-ci-x64`
     * Inherits from `windows-x64`
     * Enables compile warnings as error
-* `linux-x86_64`
-    * Linux x86_64 architecture
-    * Defaults to Qt version `6`
+* `ubuntu-x86_64`
+    * Ubuntu x86_64 architecture
     * Defaults to Ninja as build tool
-    * Defaults to `RelWithDebInfo` build configuration
-* `linux-ci-x86_64`
-    * Inherits from `linux-x86_64`
-    * Enables compile warnings as error
-* `linux-aarch64`
-    * Provided as an experimental preview feature
-    * Linux aarch64 (ARM64) architecture
-    * Defaults to Qt version `6`
-    * Defaults to Ninja as build tool
-    * Defaults to `RelWithDebInfo` build configuration
-* `linux-ci-aarch64`
-    * Inherits from `linux-aarch64`
+* `ubuntu-ci-x86_64`
+    * Inherits from `ubuntu-x86_64`
     * Enables compile warnings as error
 
-Presets can be either specified on the command line (`cmake --preset <PRESET>`) or via the associated select field in the CMake Windows GUI. Only presets appropriate for the current build host are available for selection.
+Presets can either be specified on the command line (`cmake --preset <PRESET>`) or via the associated select field in the CMake Windows GUI. Only presets appropriate for the current build host are available for selection.
 
 Additional build system options are available to developers:
 
-* `ENABLE_CCACHE`: Enables support for compilation speed-ups via ccache (enabled by default on macOS and Linux)
+* `ENABLE_CCACHE`: Enables support for compilation speed-ups via ccache (disabled by default on macOS and Ubuntu for local builds)
 * `ENABLE_FRONTEND_API`: Adds OBS Frontend API support for interactions with OBS Studio frontend functionality (disabled by default)
 * `ENABLE_QT`: Adds Qt6 support for custom user interface elements (disabled by default)
 * `CODESIGN_IDENTITY`: Name of the Apple Developer certificate that should be used for code signing
 * `CODESIGN_TEAM`: Apple Developer team ID that should be used for code signing
+
+## Creating Distributable Packages
+
+#### Windows
+By default, an InnoSetup script is generated by the build system and placed in the `build-<ARCHITECTURE>` sub-directory of the project named `installer-Windows.generated.iss` (with <ARCHITECTURE> being limited to just `x64` for the time being). This script file can be use with InnoSetup's `iscc` compiler to generate an installer executable:
+
+```PowerShell
+iscc <Path-To-Checkout>/build_<ARCHITECTURE>/installer-Windows.generated.iss /O"<Path-To-Checkout>/release" /F"<Your-Plugin-Name>-Installer"
+```
+
+To create a simple archive of your plugin, simply compress the contents of the chosen configuration subdirectory (e.g. `RelWithDebInfo`) inside the checkout root's `release` subdirectory with an archiving program of your choice[^6]:
+
+```PowerShell
+Compress-Archive -Path <Path-To-Checkout>/release/RelWithDebInfo -CompressionLevel Optimal -DestinationPath <Path-To-Checkout>/release/<Your-Plugin-Name>.zip
+```
+
+[^6]: Be careful to clean up the `release` directory contents after packaging your plugin to avoid re-packaging already existing packages on consecutive runs of these commands.
+
+#### macOS
+
+By default, the build system will automatically create a distributable package installer named `<Your-Plugin-Name>.pkg` in a subdirectory with the name of the chosen build configuration (e.g. `RelWithDebInfo`) inside the checkout root's `release` subdirectory.
+
+For proper distribution, this package needs to be signed with a "Developer ID Installer" certificate (see below for more detailed information about signing information):
+
+```Bash
+productsign --sign "<Your-Developer-ID-Installer-Cert-Name>" "<Path-To-Checkout>/release/RelWithDebInfo/<Your-Plugin-Name>.pkg"
+```
+
+Finally, the package should also be notarized, for which [Apple provides documentation](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow#Upload-your-app-to-the-notarization-service).
+
+#### Ubuntu
+
+CMake can be invoked to generate Ubuntu-compatible `deb` and `ddeb` packages directly, which will be put into the checkout root's `release` subdirectory:
+```Bash
+cmake --prefix ubuntu-x86_64 --target package
+```
+
+Alternatively, a simple compressed tar archive can be generated by simply archiving the entire contents of a directory specific to the chosen build configuration (e.g. `RelWithDebInfo` inside that same directory:
+```Bash
+cd <Path-To-Checkout>/release/RelWithDebInfo
+XZ_OPT=-T0 tar -cJf <Path-To-Checkout>/release/<Your-Plugin-Name>.tar.xz lib share
+```
+
+Be mindful of the install prefix used for configuring the project (on Ubuntu this should be `/usr/lib/x86_64-linux-gnu` for x86_64 builds), as this becomes the required installation directory for the plugin.
 
 ## GitHub Actions & CI
 
